@@ -2,12 +2,15 @@ package foreman
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 )
 
 var (
 	defaultHTTPClient = &http.Client{}
-	defaultModifier   = mdfyFunc(func(req *http.Request) *http.Request { return req })
+	defaultModifier   = mdfyFunc(func(req *http.Request) (*http.Request, error) {
+		return req, nil
+	})
 	defaultAddress    = "http://localhost:3000"
 	defaultAPIVersion = "v2"
 )
@@ -47,8 +50,9 @@ func New(opts Options) Client {
 	mod := modifier(defaultModifier)
 	mods := []modifierDecorator{
 		setURLHostModifier(opts.Address, opts.APIVersion),
+		addHeaderModifier("Accept", "*/*"),
 		addHeaderModifier("Content-Type", "application/json"),
-		addHeaderModifier("Agent", "GoForemanAPIClient"),
+		addHeaderModifier("User-Agent", "GoForemanAPIClient"),
 	}
 	if opts.Username != "" {
 		mods = append(mods, setBasicAuthModifier(opts.Username, opts.Password))
@@ -72,58 +76,58 @@ func (c Client) Head(resource string) (*http.Response, error) {
 // Do sends an HTTP request and returns its HTTP response.
 // If there was a problem during that process, an error is returned.
 func (c Client) Do(req *http.Request) (*http.Response, error) {
-	return c.httpClient.Do(c.mods.Modify(req))
+	nReq, err := c.mods.Modify(req)
+	if err != nil {
+		return &http.Response{}, err
+	}
+	return c.httpClient.Do(nReq)
 }
 
 type modifier interface {
-	Modify(*http.Request) *http.Request
+	Modify(*http.Request) (*http.Request, error)
 }
 
-type mdfyFunc func(*http.Request) *http.Request
+type mdfyFunc func(*http.Request) (*http.Request, error)
 
-func (m mdfyFunc) Modify(req *http.Request) *http.Request {
+func (m mdfyFunc) Modify(req *http.Request) (*http.Request, error) {
 	return m(req)
 }
 
 type modifierDecorator func(modifier) modifier
 
-func newModifierDecorator(ops func(*http.Request) *http.Request) modifierDecorator {
+func newModifierDecorator(ops func(*http.Request) (*http.Request, error)) modifierDecorator {
 	return func(m modifier) modifier {
-		return mdfyFunc(func(req *http.Request) *http.Request {
-			newReq := ops(req)
+		return mdfyFunc(func(req *http.Request) (*http.Request, error) {
+			newReq, err := ops(req)
+			if err != nil {
+				return nil, err
+			}
 			return m.Modify(newReq)
 		})
 	}
 }
 
 func addHeaderModifier(key, value string) modifierDecorator {
-	return newModifierDecorator(func(req *http.Request) *http.Request {
+	return newModifierDecorator(func(req *http.Request) (*http.Request, error) {
 		req.Header.Add(key, value)
-		return req
+		return req, nil
 	})
 }
 
 func setURLHostModifier(address, apiVersion string) modifierDecorator {
-	return newModifierDecorator(func(req *http.Request) *http.Request {
-		var scheme string
-		switch {
-		case strings.HasPrefix(address, "http://"):
-			scheme = "http"
-		case strings.HasPrefix(address, "https://"):
-			scheme = "https"
-		default:
-			scheme = ""
+	return newModifierDecorator(func(req *http.Request) (*http.Request, error) {
+		url, err := url.Parse(address + "/api/" + apiVersion + "/" + strings.TrimPrefix(req.URL.Path, "/"))
+		if err != nil {
+			return req, err
 		}
-		req.URL.Host = strings.TrimPrefix(address, scheme+"://")
-		req.URL.Path = apiVersion + "/" + strings.TrimPrefix(req.URL.Path, "/")
-		req.URL.Scheme = scheme
-		return req
+		req.URL = url
+		return req, nil
 	})
 }
 
 func setBasicAuthModifier(username, password string) modifierDecorator {
-	return newModifierDecorator(func(req *http.Request) *http.Request {
+	return newModifierDecorator(func(req *http.Request) (*http.Request, error) {
 		req.SetBasicAuth(username, password)
-		return req
+		return req, nil
 	})
 }

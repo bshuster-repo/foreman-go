@@ -37,11 +37,14 @@ func TestNewSetsHeadersCorrectly(t *testing.T) {
 		val string
 	}{
 		{"Content-Type", "application/json"},
-		{"Agent", "GoForemanAPIClient"},
+		{"User-Agent", "GoForemanAPIClient"},
 	}
 	c := New(Options{})
 	assertModifyNotNil(t, c)
-	req := c.mods.Modify(setTestRequest(t))
+	req, err := c.mods.Modify(setTestRequest(t))
+	if err != nil {
+		t.Errorf("expected Modify to return error: %s", err)
+	}
 	for _, te := range tt {
 		if req.Header.Get(te.key) != te.val {
 			t.Errorf("expected request %s to be '%s' but got '%s'", te.key, te.val, req.Header.Get(te.key))
@@ -52,7 +55,13 @@ func TestNewSetsHeadersCorrectly(t *testing.T) {
 func TestNewDefaultsIsCorrect(t *testing.T) {
 	c := New(Options{})
 	assertModifyNotNil(t, c)
-	req := c.mods.Modify(setTestRequest(t))
+	req, err := c.mods.Modify(setTestRequest(t))
+	if err != nil {
+		t.Errorf("expected Modify to return error: %s", err)
+	}
+	if err != nil {
+		t.Errorf("expected Modify to return error: %s", err)
+	}
 	expURL := strings.TrimPrefix(defaultAddress, "http://")
 	if req.URL.Host != expURL {
 		t.Errorf("expected request URL Host to be '%s' but got '%s'", expURL, req.URL.Host)
@@ -60,8 +69,8 @@ func TestNewDefaultsIsCorrect(t *testing.T) {
 	if req.URL.Scheme != "http" {
 		t.Errorf("expected request URL Scheme to be 'http' but got '%s'", req.URL.Scheme)
 	}
-	if req.URL.Path != defaultAPIVersion+"/" {
-		t.Errorf("expected request URL Path to be '%s' but got '%s'", defaultAPIVersion+"/", req.URL.Path)
+	if req.URL.Path != "/api/"+defaultAPIVersion+"/" {
+		t.Errorf("expected request URL Path to be '%s' but got '%s'", "/api/"+defaultAPIVersion+"/", req.URL.Path)
 	}
 
 	_, _, k := req.BasicAuth()
@@ -78,11 +87,10 @@ func TestNewSetsForemanURL(t *testing.T) {
 		host    string
 		path    string
 	}{
-		{"http://10.20.30.40:8989", "", "http", "10.20.30.40:8989", "v2/"},
-		{"https://172.20.30.40:8989", "", "https", "172.20.30.40:8989", "v2/"},
-		{"10.20.30.40:8989", "", "", "10.20.30.40:8989", "v2/"},
-		{"tcp://foreman.internal.acme.io:8989", "", "", "tcp://foreman.internal.acme.io:8989", "v2/"},
-		{"https://foreman.acme.io:80", "v5", "https", "foreman.acme.io:80", "v5/"},
+		{"http://10.20.30.40:8989", "", "http", "10.20.30.40:8989", "/api/v2/"},
+		{"https://172.20.30.40:8989", "", "https", "172.20.30.40:8989", "/api/v2/"},
+		{"https://foreman.internal.acme.io:8989", "", "https", "foreman.internal.acme.io:8989", "/api/v2/"},
+		{"https://foreman.acme.io:80", "v5", "https", "foreman.acme.io:80", "/api/v5/"},
 	}
 	for _, te := range tt {
 		c := New(Options{
@@ -90,7 +98,11 @@ func TestNewSetsForemanURL(t *testing.T) {
 			APIVersion: te.apiVer,
 		})
 		assertModifyNotNil(t, c)
-		req := c.mods.Modify(setTestRequest(t))
+		req, err := c.mods.Modify(setTestRequest(t))
+		if err != nil {
+			t.Errorf("expected Modify to not return error: %s", err)
+			t.FailNow()
+		}
 		if req.URL.Scheme != te.scheme {
 			t.Errorf("expected request URL Scheme to be '%s' but got '%s'", te.scheme, req.URL.Scheme)
 		}
@@ -101,7 +113,22 @@ func TestNewSetsForemanURL(t *testing.T) {
 			t.Errorf("expected request URL Host to be '%s' but got '%s'", te.path, req.URL.Path)
 		}
 	}
+}
 
+func TestBadAddress(t *testing.T) {
+	//{"10.20.30.40:8989", "", "", "10.20.30.40:8989", "/api/v2/"},
+	opts := Options{
+		Address: "10.20.30.40:8989",
+	}
+	c := New(opts)
+	assertModifyNotNil(t, c)
+	if _, err := c.mods.Modify(setTestRequest(t)); err == nil {
+		t.Error("expected Modify to return error")
+	}
+
+	if _, err := c.Do(setTestRequest(t)); err == nil {
+		t.Error("expected Modify to return error")
+	}
 }
 
 func TestHasBasicAuth(t *testing.T) {
@@ -112,7 +139,10 @@ func TestHasBasicAuth(t *testing.T) {
 	for _, te := range tt {
 		c := New(te)
 		assertModifyNotNil(t, c)
-		req := c.mods.Modify(setTestRequest(t))
+		req, err := c.mods.Modify(setTestRequest(t))
+		if err != nil {
+			t.Errorf("expected Modify to return error: %s", err)
+		}
 		u, p, k := req.BasicAuth()
 		if !k {
 			t.Error("expected request to have BasicAuth")
@@ -160,10 +190,10 @@ func TestClientHead(t *testing.T) {
 		host      string
 		path      string
 	}{
-		{"hosts", "admin", "newpass1", true, "http://foreman.acme.io", "", "http", "foreman.acme.io", "v2/hosts"},
-		{"", "admin", "", true, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "v3/"},
-		{"", "", "", false, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "v3/"},
-		{"http://hello.world.com/hostl", "", "", false, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "v3/hostl"},
+		{"hosts", "admin", "newpass1", true, "http://foreman.acme.io", "", "http", "foreman.acme.io", "/api/v2/hosts"},
+		{"", "admin", "", true, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/"},
+		{"", "", "", false, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/"},
+		{"http://hello.world.com/hostl", "", "", false, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/hostl"},
 	}
 	for _, te := range tt {
 		c := New(Options{
@@ -194,7 +224,6 @@ func TestClientHead(t *testing.T) {
 				if req.Method != http.MethodHead {
 					t.Errorf("expected the request Method to be '%s' but got '%s'", http.MethodHead, req.Method)
 				}
-
 				return &http.Response{}, nil
 			}),
 		})
