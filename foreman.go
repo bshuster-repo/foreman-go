@@ -64,15 +64,6 @@ func New(opts Options) Client {
 	return client
 }
 
-// Head sends an Head HTTP request to Foreman and returns the response.
-func (c Client) Head(resource string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodHead, resource, nil)
-	if err != nil {
-		return nil, err
-	}
-	return c.Do(req)
-}
-
 // Do sends an HTTP request and returns its HTTP response.
 // If there was a problem during that process, an error is returned.
 func (c Client) Do(req *http.Request) (*http.Response, error) {

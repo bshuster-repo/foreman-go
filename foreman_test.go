@@ -16,12 +16,16 @@ func TestNewDefaults(t *testing.T) {
 	}
 }
 
-func setTestRequest(t *testing.T) *http.Request {
-	req, err := http.NewRequest(http.MethodGet, "", nil)
+func setRequest(t *testing.T, method, resource string) *http.Request {
+	req, err := http.NewRequest(method, resource, nil)
 	if err != nil {
 		t.Errorf("expected the request creation not to return error: %s", err)
 	}
 	return req
+}
+
+func setTestRequest(t *testing.T) *http.Request {
+	return setRequest(t, http.MethodGet, "")
 }
 
 func assertModifyNotNil(t *testing.T, c Client) {
@@ -116,7 +120,6 @@ func TestNewSetsForemanURL(t *testing.T) {
 }
 
 func TestBadAddress(t *testing.T) {
-	//{"10.20.30.40:8989", "", "", "10.20.30.40:8989", "/api/v2/"},
 	opts := Options{
 		Address: "10.20.30.40:8989",
 	}
@@ -178,7 +181,7 @@ func newTestingHTTPClient(ops func(*http.Request) (*http.Response, error)) *http
 	}
 }
 
-func TestClientHead(t *testing.T) {
+func TestClientDo(t *testing.T) {
 	tt := []struct {
 		resource  string
 		username  string
@@ -228,21 +231,9 @@ func TestClientHead(t *testing.T) {
 			}),
 		})
 		assertModifyNotNil(t, c)
-		_, err := c.Head(te.resource)
+		_, err := c.Do(setRequest(t, http.MethodHead, te.resource))
 		if err != nil {
 			t.Errorf("expected Head not to return errors: %s", err)
 		}
-	}
-}
-
-func TestFailedHead(t *testing.T) {
-	c := New(Options{})
-	_, err := c.Head(":hehehe")
-	if err == nil {
-		t.Error("expected Head to return error")
-	}
-	expErr := "missing protocol scheme"
-	if !strings.Contains(err.Error(), expErr) {
-		t.Errorf("expected error message(%s) to contain '%s'", err.Error(), expErr)
 	}
 }
