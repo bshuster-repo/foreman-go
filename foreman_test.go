@@ -106,8 +106,8 @@ func TestNewSetsForemanURL(t *testing.T) {
 
 func TestHasBasicAuth(t *testing.T) {
 	tt := []Options{
-		Options{Username: "dave"},
-		Options{Username: "admin", Password: "helloworld!"},
+		{Username: "dave"},
+		{Username: "admin", Password: "helloworld!"},
 	}
 	for _, te := range tt {
 		c := New(te)
