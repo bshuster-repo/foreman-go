@@ -192,11 +192,14 @@ func TestClientDo(t *testing.T) {
 		scheme    string
 		host      string
 		path      string
+		rawQuery  string
 	}{
-		{"hosts", "admin", "newpass1", true, "http://foreman.acme.io", "", "http", "foreman.acme.io", "/api/v2/hosts"},
-		{"", "admin", "", true, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/"},
-		{"", "", "", false, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/"},
-		{"http://hello.world.com/hostl", "", "", false, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/hostl"},
+		{"hosts", "admin", "newpass1", true, "http://foreman.acme.io", "", "http", "foreman.acme.io", "/api/v2/hosts", ""},
+		{"", "admin", "", true, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/", ""},
+		{"", "", "", false, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/", ""},
+		{"http://hello.world.com/hostl", "", "", false, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/hostl", ""},
+		{"hosts?search=host2", "", "", false, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/hosts", "search=host2"},
+		{"hosts?search=host2&page=1", "", "", false, "https://foreman.acme.io", "v3", "https", "foreman.acme.io", "/api/v3/hosts", "search=host2&page=1"},
 	}
 	for _, te := range tt {
 		c := New(Options{
@@ -223,6 +226,9 @@ func TestClientDo(t *testing.T) {
 				}
 				if req.URL.Path != te.path {
 					t.Errorf("expected the request URL Path to be '%s' but got '%s'", te.path, req.URL.Path)
+				}
+				if req.URL.RawQuery != te.rawQuery {
+					t.Errorf("expected the request URL RawQuery to be '%s' but got '%s'", te.rawQuery, req.URL.RawQuery)
 				}
 				if req.Method != http.MethodHead {
 					t.Errorf("expected the request Method to be '%s' but got '%s'", http.MethodHead, req.Method)

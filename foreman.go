@@ -50,7 +50,7 @@ func New(opts Options) Client {
 	mod := modifier(defaultModifier)
 	mods := []modifierDecorator{
 		setURLHostModifier(opts.Address, opts.APIVersion),
-		addHeaderModifier("Accept", "*/*"),
+		addHeaderModifier("Accept", "application/json"),
 		addHeaderModifier("Content-Type", "application/json"),
 		addHeaderModifier("User-Agent", "GoForemanAPIClient"),
 	}
@@ -111,6 +111,7 @@ func setURLHostModifier(address, apiVersion string) modifierDecorator {
 		if err != nil {
 			return req, err
 		}
+		url.RawQuery = req.URL.RawQuery
 		req.URL = url
 		return req, nil
 	})
