@@ -1,8 +1,11 @@
 package foreman
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -66,5 +69,68 @@ func TestIndexError(t *testing.T) {
 	c := New(Options{})
 	if _, err := c.Index(Query{":wrongURL", url.Values{}}); err == nil {
 		t.Error("expected Index to return error")
+	}
+}
+
+func TestCreate(t *testing.T) {
+	tt := []struct {
+		name       string
+		parameters map[string]interface{}
+		expected   map[string]interface{}
+	}{
+		{"architectures", map[string]interface{}{"name": "arch"}, map[string]interface{}{"architecture": map[string]interface{}{"name": "arch"}}},
+		{"media", map[string]interface{}{"name": "Arch"}, map[string]interface{}{"medium": map[string]interface{}{"name": "Arch"}}},
+	}
+	c := New(Options{})
+
+	fURL := defaultAddress + "/api/" + defaultAPIVersion
+	for _, te := range tt {
+		c.httpClient = newTestingHTTPClient(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != fURL+"/"+te.name {
+				t.Errorf("expected request URL to be '%s' but got '%s'", fURL+"/"+te.name, req.URL)
+			}
+			if req.Method != http.MethodPost {
+				t.Errorf("expected request Method to be '%s' but got '%s'", http.MethodPost, req.Method)
+			}
+			defer req.Body.Close()
+			var jsonMap map[string]interface{}
+			if err := json.NewDecoder(req.Body).Decode(&jsonMap); err != nil {
+				t.Errorf("expected json.NewDecoder.Decode to not return error: %s", err)
+			}
+			if !reflect.DeepEqual(jsonMap, te.expected) {
+				t.Errorf("expected body to be '%s' but got '%s'", te.expected, jsonMap)
+			}
+			return &http.Response{}, nil
+		})
+		c.Create(Resource{Name: te.name, Parameters: te.parameters})
+	}
+}
+
+type testFailedMarshaler map[string]string
+
+func (tfm testFailedMarshaler) MarshalJSON() ([]byte, error) {
+	return nil, errors.New("")
+}
+
+func TestCreateError(t *testing.T) {
+	tt := []struct {
+		resource Resource
+		expErr   string
+	}{
+		{Resource{}, "Name is mandatory"},
+		{Resource{Name: ":bla"}, "parse :bla: missing protocol scheme"},
+		{Resource{Name: "bla", Parameters: testFailedMarshaler(map[string]string{"h": "h"})}, "json: error calling MarshalJSON for type foreman.testFailedMarshaler: "},
+	}
+	c := New(Options{})
+	c.httpClient = newTestingHTTPClient(func(req *http.Request) (*http.Response, error) { return &http.Response{}, nil })
+	for _, te := range tt {
+		_, err := c.Create(te.resource)
+		if err == nil {
+			t.Error("expected Create to return error")
+			t.FailNow()
+		}
+		if err.Error() != te.expErr {
+			t.Errorf("expected error to be '%s' but got '%s'", te.expErr, err)
+		}
 	}
 }
