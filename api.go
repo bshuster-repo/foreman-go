@@ -13,7 +13,7 @@ import (
 //
 // parmas := url.Values{}
 // params.Add("search", "host1.local.io")
-// q := Query{"hosts", params}
+// q := foreman.Query{"hosts", params}
 // resp, err := client.Index(q)
 type Query struct {
 	Resource   string
@@ -32,10 +32,16 @@ func (c Client) Index(query Query) (*http.Response, error) {
 }
 
 // Resource represents a resource in Foreman.
-// Used to create, update or delete a specific resource such as hosts.
+// Used to create a specific resource such as hosts.
+//
+// params = map[string]interface{}{
+// 		"name": "ARM",
+//      "operatingsystem_ids": int[]{1,2},
+// }
+// r := foreman.Resource{"architectures", params}
+// resp, err := client.Create(r)
 type Resource struct {
 	Name       string
-	ID         string
 	Parameters interface{}
 }
 
