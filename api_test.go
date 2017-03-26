@@ -78,8 +78,8 @@ func TestCreate(t *testing.T) {
 		parameters map[string]interface{}
 		expected   map[string]interface{}
 	}{
-		{"architectures", map[string]interface{}{"name": "arch"}, map[string]interface{}{"architecture": map[string]interface{}{"name": "arch"}}},
-		{"media", map[string]interface{}{"name": "Arch"}, map[string]interface{}{"medium": map[string]interface{}{"name": "Arch"}}},
+		{"architectures", map[string]interface{}{"name": "arch"}, map[string]interface{}{"name": "arch"}},
+		{"media", map[string]interface{}{"name": "Arch"}, map[string]interface{}{"name": "Arch"}},
 	}
 	c := New(Options{})
 
@@ -112,25 +112,88 @@ func (tfm testFailedMarshaler) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("")
 }
 
-func TestCreateError(t *testing.T) {
+func TestAPIError(t *testing.T) {
+	c := New(Options{})
 	tt := []struct {
 		resource Resource
 		expErr   string
+		apiF     func(Resource) (*http.Response, error)
 	}{
-		{Resource{}, "Name is mandatory"},
-		{Resource{Name: ":bla"}, "parse :bla: missing protocol scheme"},
-		{Resource{Name: "bla", Parameters: testFailedMarshaler(map[string]string{"h": "h"})}, "json: error calling MarshalJSON for type foreman.testFailedMarshaler: "},
+		{Resource{Name: ":bla"}, "missing protocol scheme", c.Create},
+		{Resource{Name: ":bla"}, "missing protocol scheme", c.Update},
+		{Resource{Name: ":bla"}, "missing protocol scheme", c.Delete},
+		{Resource{Name: "bla", Parameters: testFailedMarshaler(map[string]string{"h": "h"})}, "json: error calling MarshalJSON", c.Create},
+		{Resource{Name: "bla", Parameters: testFailedMarshaler(map[string]string{"h": "h"})}, "json: error calling MarshalJSON", c.Update},
 	}
-	c := New(Options{})
 	c.httpClient = newTestingHTTPClient(func(req *http.Request) (*http.Response, error) { return &http.Response{}, nil })
 	for _, te := range tt {
-		_, err := c.Create(te.resource)
+		_, err := te.apiF(te.resource)
 		if err == nil {
-			t.Error("expected Create to return error")
+			t.Error("expected api function to return error")
 			t.FailNow()
 		}
-		if err.Error() != te.expErr {
-			t.Errorf("expected error to be '%s' but got '%s'", te.expErr, err)
+		if !strings.Contains(err.Error(), te.expErr) {
+			t.Errorf("expected error to contain '%s' but got '%s'", te.expErr, err)
 		}
+	}
+}
+
+func TestUpdate(t *testing.T) {
+	tt := []struct {
+		name       string
+		id         string
+		parameters map[string]interface{}
+		expected   map[string]interface{}
+	}{
+		{"architectures", "1", map[string]interface{}{"name": "arch"}, map[string]interface{}{"name": "arch"}},
+		{"media", "Arch", map[string]interface{}{"name": "Arch2016"}, map[string]interface{}{"name": "Arch2016"}},
+	}
+	c := New(Options{})
+
+	fURL := defaultAddress + "/api/" + defaultAPIVersion
+	for _, te := range tt {
+		c.httpClient = newTestingHTTPClient(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != fURL+"/"+te.name+"/"+te.id {
+				t.Errorf("expected request URL to be '%s' but got '%s'", fURL+"/"+te.name+"/"+te.id, req.URL)
+			}
+			if req.Method != http.MethodPut {
+				t.Errorf("expected request Method to be '%s' but got '%s'", http.MethodPut, req.Method)
+			}
+			defer req.Body.Close()
+			var jsonMap map[string]interface{}
+			if err := json.NewDecoder(req.Body).Decode(&jsonMap); err != nil {
+				t.Errorf("expected json.NewDecoder.Decode to not return error: %s", err)
+			}
+			if !reflect.DeepEqual(jsonMap, te.expected) {
+				t.Errorf("expected body to be '%s' but got '%s'", te.expected, jsonMap)
+			}
+			return &http.Response{}, nil
+		})
+		c.Update(Resource{Name: te.name, ID: te.id, Parameters: te.parameters})
+	}
+}
+
+func TestDelete(t *testing.T) {
+	tt := []struct {
+		name string
+		id   string
+	}{
+		{"architectures", "1"},
+		{"media", "Arch"},
+	}
+	c := New(Options{})
+
+	fURL := defaultAddress + "/api/" + defaultAPIVersion
+	for _, te := range tt {
+		c.httpClient = newTestingHTTPClient(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != fURL+"/"+te.name+"/"+te.id {
+				t.Errorf("expected request URL to be '%s' but got '%s'", fURL+"/"+te.name+"/"+te.id, req.URL)
+			}
+			if req.Method != http.MethodDelete {
+				t.Errorf("expected request Method to be '%s' but got '%s'", http.MethodDelete, req.Method)
+			}
+			return &http.Response{}, nil
+		})
+		c.Delete(Resource{Name: te.name, ID: te.id})
 	}
 }
